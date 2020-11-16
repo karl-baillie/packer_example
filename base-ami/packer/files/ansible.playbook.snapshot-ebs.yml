@@ -1,0 +1,62 @@
+#
+# snapshot-ebs.yml
+#
+# An ansible playbook to snapshot an ebs volume.
+#
+# Examples:
+#   /usr/local/bin/ansible-playbook \
+#     -e volume_id=vol-0eeca4d882a8308b1 \
+#     -e volume_name=app_name-uat-zookeeper-node-1-data \
+#     /etc/ansible/playbooks/snapshot-ebs.yml
+#
+---
+- hosts: localhost
+  connection: local
+  gather_facts: yes
+  tasks:
+  - assert:
+      that:
+      - volume_id is defined
+      - volume_name is defined
+
+  - name: Discover EC2 instance metadata
+    ec2_metadata_facts:
+    register: metadata
+    until: metadata is success
+    retries: 10
+    delay: 1
+
+  - name: Discover EC2 instance facts
+    ec2_instance_facts:
+      filters:
+        instance-id: "{{ metadata.ansible_facts.ansible_ec2_instance_id }}"
+      region: "{{ metadata.ansible_facts.ansible_ec2_placement_region }}"
+    register: ec2
+    until: ec2 is success
+    retries: 6
+    delay: 5
+
+  - name: Set timestamp fact
+    set_fact:
+      timestamp: "{{ ansible_date_time.iso8601_basic_short }}"
+
+  - name: Filter EC2 tags
+    vars:
+      name_tag:
+        Name: "{{ volume_name }}-{{ timestamp }}"
+    set_fact:
+      tags: "{{ tags | default(name_tag) | combine({item.key: item.value}) }}"
+    when: item.key is not match('^aws:|^Name$')
+    with_dict: "{{ ec2.instances[0].tags }}"
+
+  - name: Snapshot EBS volume
+    ec2_snapshot:
+      description: "Snapshot of {{ volume_id }} from {{ timestamp }}"
+      instance-id: "{{ metadata.ansible_facts.ansible_ec2_instance_id }}"
+      snapshot_tags: "{{ tags | default({}) }}"
+      volume_id: "{{ volume_id }}"
+      wait: no
+    register: snapshot
+    until: snapshot is success
+    retries: 6
+    delay: 10

@@ -1,0 +1,6 @@
+{
+  "credHelpers": {
+    "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com": "ecr-login",
+    "137112412989.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com": "ecr-login"
+  }
+}

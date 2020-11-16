@@ -1,0 +1,92 @@
+{
+  "variables": {
+    "git_revision": "{{ env `GIT_REVISION` }}",
+    "source_ami_name": "",
+    "source_ami_owner": "amazon",
+    "entrypoint": "bootstrap.sh",
+    "encrypt_boot": "false",
+    "version": "{{ env `VERSION` }}"
+  },
+  "builders": [
+    {
+      "ami_name": "{{ user `ami_name` }}-{{ user `version` }}",
+      "ami_users": "{{ user `ami_users` }}",
+      "associate_public_ip_address" : false,
+      "encrypt_boot": "{{ user `encrypt_boot` }}",
+      "instance_type": "{{ user `instance_type` }}",
+      "region": "{{ user `aws_region` }}",
+      "security_group_filter": {
+        "filters": {
+          "tag:Name": "{{ user `security_group_name` }}"
+        }
+      },
+      "ssh_pty": true,
+      "ssh_timeout": "5m",
+      "ssh_username": "ec2-user",
+      "subnet_filter": {
+        "filters": {
+          "tag:Name": "{{ user `subnet_name` }}"
+        },
+        "most_free": true,
+        "random": false
+      },
+      "type": "amazon-ebs",
+      "source_ami_filter": {
+        "owners": [
+          "{{ user `source_ami_owner` }}"
+        ],
+        "filters": {
+          "name": "{{ user `source_ami_name` }}"
+        },
+        "most_recent": true
+      },
+      "run_tags": {
+        "Name": "packer-{{ user `ami_name` }}",
+        "packer:base-ami-name": "{{ user `source_ami_name` }}",
+        "git:revision": "{{ user `git_revision` }}",
+        "git:branch": "{{ user `git_branch` }}",
+        "git:repo": "{{ user `git_repo` }}",
+        "cloudconformity:exception": "intermediate-image",
+        "Billing": "{{ user `billing_tag_value` }}",
+        "CostCentre": "{{ user `costcentre_tag_value` }}"
+      },
+      "run_volume_tags": {
+        "Name": "packer-{{ user `ami_name` }}",
+        "packer:base-ami-name": "{{ user `source_ami_name` }}",
+        "git:revision": "{{ user `git_revision` }}",
+        "git:branch": "{{ user `git_branch` }}",
+        "git:repo": "{{ user `git_repo` }}",
+        "cloudconformity:exception": "intermediate-image",
+        "Billing": "{{ user `billing_tag_value` }}",
+        "CostCentre": "{{ user `costcentre_tag_value` }}"
+      },
+      "tags": {
+        "Name": "{{ user `ami_name` }}",
+        "packer:base-ami-name": "{{ user `source_ami_name` }}",
+        "git:revision": "{{ user `git_revision` }}",
+        "git:repo": "{{ user `git_repo` }}",
+        "ci:cleanup": "{{ user `ci_cleanup` }}",
+        "cloudconformity:exception": "{{ user `cloudconformity_exception` }}",
+        "Billing": "{{ user `billing_tag_value` }}",
+        "CostCentre": "{{ user `costcentre_tag_value` }}"
+      }
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "./packer/files",
+      "destination": "/tmp/"
+    },
+    {
+      "execute_command": "{{ .Vars }} sudo -S -E bash '{{ .Path }}'",
+      "type": "shell",
+      "script": "./packer/scripts/{{ user `entrypoint` }}",
+      "environment_vars": [
+        "ANSIBLE_VERSION={{ user `ansible_version` }}",
+        "AWS_ACCOUNT_ID={{ user `aws_account_id` }}",
+        "AWS_DEFAULT_REGION={{ user `aws_region` }}"
+      ]
+    }
+  ]
+}

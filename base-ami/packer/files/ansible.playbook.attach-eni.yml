@@ -1,0 +1,39 @@
+#
+# attach-eni.yml
+#
+# An ansible playbook for attaching a network interface to a device.
+#
+# Examples:
+#   /usr/local/bin/ansible-playbook \
+#     -e eni_id=eni-05aed15d97a475721 \
+#     /etc/ansible/playbooks/attach-eni.yml
+#
+---
+- hosts: localhost
+  connection: local
+  gather_facts: yes
+  tasks:
+  - assert:
+      that:
+      - eni_id is defined
+
+  - name: Discover EC2 instance metadata
+    ec2_metadata_facts:
+    register: metadata
+    until: metadata is success
+    retries: 10
+    delay: 1
+
+  - name: Attach the ENI
+    ec2_eni:
+      state: present
+      attached: yes
+      device_index: "{{ device_index | default(1) }}"
+      eni_id: "{{ eni_id }}"
+      instance_id: "{{ metadata.ansible_facts.ansible_ec2_instance_id }}"
+      region: "{{ metadata.ansible_facts.ansible_ec2_placement_region }}"
+    register: attach
+    until: attach is success
+    retries: 12
+    delay: 5
+

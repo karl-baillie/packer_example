@@ -1,0 +1,90 @@
+#
+# attach-ebs.yml
+#
+# An ansible playbook for attaching a volume to a device.
+#
+# Examples:
+#   /usr/local/bin/ansible-playbook \
+#     -e device_name=/dev/xvdf \
+#     -e volume_dir=/data \
+#     -e volume_id=vol-0eeca4d882a8308b1 \
+#     -e volume_name=app_name-uat-zookeeper-node-1-data \
+#     /etc/ansible/playbooks/attach-ebs.yml
+#
+---
+- hosts: localhost
+  connection: local
+  gather_facts: yes
+  tasks:
+  - assert:
+      that:
+      - device_name is defined
+      - volume_id is defined
+      - volume_name is defined
+      - volume_dir is defined
+
+  - name: Discover EC2 instance metadata
+    ec2_metadata_facts:
+    register: metadata
+    until: metadata is success
+    retries: 10
+    delay: 1
+
+  - name: Attach EBS volume
+    ec2_vol:
+      state: present
+      device_name: "{{ device_name }}"
+      id: "{{ volume_id }}"
+      instance: "{{ metadata.ansible_facts.ansible_ec2_instance_id }}"
+      name: "{{ volume_name }}"
+      region: "{{ metadata.ansible_facts.ansible_ec2_placement_region }}"
+    register: attach
+    until: attach is success
+    retries: 60
+    delay: 5
+
+  - name: Format the EBS volume
+    filesystem:
+      dev: "{{ device_name }}"
+      fstype: "{{ device_fstype | default('xfs') }}"
+      force: no
+      resizefs: "{{ (device_fstype | default('xfs') == 'xfs') | ternary('no', 'yes') }}"
+    register: format
+    until: format is success
+    retries: 10
+    delay: 1
+
+  - name: Create Mount Point
+    file:
+      state: directory
+      path: "{{ volume_dir }}"
+      mode: 0755
+    register: mkdir
+    until: mkdir is success
+    retries: 10
+    delay: 1
+
+  - name: Mount the EBS volume
+    mount:
+      state: mounted
+      fstype: "{{ device_fstype | default('xfs') }}"
+      opts: "{{ device_opts | default('defaults,nofail,noatime') }}"
+      passno: 2
+      path: "{{ volume_dir }}"
+      src: "{{ device_name }}"
+    register: mount
+    until: mount is success
+    retries: 10
+    delay: 1
+
+  - name: Resize the Filesystem, if required
+    filesystem:
+      dev: "{{ device_name }}"
+      fstype: "{{ device_fstype | default('xfs') }}"
+      force: no
+      resizefs: yes
+    register: resizefs
+    when: device_fstype | default('xfs') == 'xfs'
+    until: resizefs is success
+    retries: 10
+    delay: 1

@@ -1,0 +1,77 @@
+#
+# install-certs.yml
+#
+# An ansible playbook for installing SSL certificates.
+#
+# Examples:
+#   /usr/local/bin/ansible-playbook \
+#     -e cert_dir=/var/private/ssl \
+#     -e cert_owner=root \
+#     -e cert_group=root \
+#     -e cert_name=mongo.app_name-uat.gaming-services.in \
+#     -e stack_env=uat \
+#     /etc/ansible/playbooks/install-certs.yml
+#
+---
+- hosts: localhost
+  connection: local
+  gather_facts: yes
+  tasks:
+  - assert:
+      that:
+      - cert_name is defined
+      - stack_env is defined
+
+  - name: Discover EC2 instance metadata
+    ec2_metadata_facts:
+    register: metadata
+    until: metadata is success
+    retries: 10
+    delay: 1
+
+  - file:
+      path: "{{ cert_dir|default('/var/private/ssl') }}"
+      state: directory
+      owner: "{{ cert_owner|default('root') }}"
+      group: "{{ cert_group|default('root') }}"
+      mode: 0700
+
+  - name: Get ssl certs
+    shell: |
+      aws ssm get-parameter \
+        --name /app_name/{{ stack_env }}/letsencrypt/{{ cert_name }}/{{ item }} \
+        --query 'Parameter.Value' \
+        --region {{ metadata.ansible_facts.ansible_ec2_placement_region }} \
+        --with-decryption \
+        --output text > {{ cert_dir|default('/var/private/ssl') }}/{{ item }}
+    with_items:
+    - cert.pem
+    - chain.pem
+    - fullchain.pem
+    - privkey.pem
+    register: copy_ssl_certs
+    failed_whem: copy_ssl_certs.rc != 0
+
+  - name: Convert private key to pkcs8
+    shell: |
+      openssl pkcs8 -in {{ cert_dir|default('/var/private/ssl') }}/privkey.pem -topk8 -out {{ cert_dir|default('/var/private/ssl') }}/privkey.p8 -nocrypt
+
+  - name: Get all certs into one file
+    shell: |
+      cat {{ cert_dir|default('/var/private/ssl') }}/fullchain.pem {{ cert_dir|default('/var/private/ssl') }}/privkey.pem > {{ cert_dir|default('/var/private/ssl') }}/all.pem
+
+  - name: Change fs perms
+    file:
+      path: "{{ cert_dir|default('/var/private/ssl') }}/{{ item }}"
+      owner: "{{ cert_owner|default('root') }}"
+      group: "{{ cert_group|default('root') }}"
+      mode: 0400
+    with_items:
+    - cert.pem
+    - chain.pem
+    - fullchain.pem
+    - privkey.pem
+    - privkey.p8
+    - all.pem
+
+

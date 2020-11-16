@@ -1,0 +1,30 @@
+{
+  "variables": {
+    "git_revision": "{{ env `GIT_REVISION` }}",
+    "git_branch": "{{ env `GIT_BRANCH` }}",
+    "git_repo": "{{ env `GIT_REPO` }}",
+    "version": "{{ env `VERSION` }}"
+  },
+  "builders": [
+    {
+      "type": "docker",
+      "image": "amazonlinux:2",
+      "commit": "true",
+      "run_command": [ "-d", "-t", "-i", "{{.Image}}", "/bin/sh" ]
+    }
+  ],
+  "provisioners": [
+    {
+        "type": "file",
+        "source": "./packer/vars.json",
+        "destination": "/tmp/ami-bake-vars.json"
+    },
+    {
+      "type": "shell",
+      "script": "./packer/scripts/bootstrap.sh",
+      "environment_vars": [
+        "ANSIBLE_VERSION={{ user `ansible_version` }}"
+      ]
+    }
+  ]
+}
